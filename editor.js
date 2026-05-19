@@ -1,0 +1,496 @@
+/* ============================================================
+   Brand-Agent Deck — Editor Script (canonical template)
+
+   To customize for a new deck, do a single sed pass on this file:
+
+     sed -i '' 's/BRAND/tumi/g' editor.js     # replace BRAND with your brand short name
+     sed -i '' 's/Agent/Porter/g' editor.js   # replace Agent with your agent name
+
+   That swaps the mock-class selector (.snhu-mock → .tumi-mock), the storage-key prefix
+   ('snhu-mockup:' → 'tumi-mockup:'), and the toolbar title prefix and console label.
+
+   Then optionally customize:
+     - applyEditable() selector list — add deck-specific component classes if needed
+     - structuralFingerprint() counters — add deck-specific component counters
+     - console.log color — match your brand's accent
+
+   Three ways to enable edit mode:
+     1. Add #edit to URL (works on initial load AND when added later)
+     2. Press Cmd/Ctrl + E to toggle
+     3. Type the word "edit" anywhere on the page
+
+   Save model:
+     - Edits live-save to localStorage as you type. Per-page key with version + structural
+       fingerprint so a later HTML rebuild doesn't get hijacked by stale cached state.
+     - "Save to file" writes the current DOM (with edit artifacts stripped) back to the
+       real .html file on disk via the File System Access API. First click prompts for the
+       deck folder; subsequent saves in the same tab reuse the directory handle.
+     - On browsers without showDirectoryPicker (Safari, Firefox), Save to file falls back
+       to a download — drop the file into the repo manually.
+     - Designed for GitHub Pages hosting: edit → save → git commit && push → live.
+   ============================================================ */
+
+(function () {
+  // Bumping STORAGE_VERSION invalidates any cached state from older builds. Don't bump
+  // casually — users have edits saved under the current version and bumping wipes them.
+  const STORAGE_VERSION = 'v1';
+  const STORAGE_KEY = 'snhu-mockup:' + STORAGE_VERSION + ':' + (location.pathname.split('/').pop() || 'index.html');
+  let edited = false;
+  let initialized = false;
+  // Module-scope flag preventing duplicate binding of the image-swap click handler within
+  // a single page load. (Previously this used a dataset attribute on .mockup-stage, but
+  // the attribute got baked into Save-to-file output and broke the handler on next load.)
+  let swapHandlerBound = false;
+  // Directory handle for File System Access API. Per-tab; not persisted across reloads
+  // (the API doesn't expose handles across reloads without IndexedDB indirection).
+  let dirHandle = null;
+
+  function isEditUrl() {
+    return location.hash === '#edit' || location.search.indexOf('edit=1') !== -1;
+  }
+
+  function structuralFingerprint(root) {
+    // A minimal signature of the page's structural skeleton. If this differs between
+    // a saved state and the current HTML, the saved state was made against a different
+    // build of the page and applying it would silently overwrite new structural changes.
+    // CUSTOMIZE: add deck-specific counters here if the deck has frequent structural
+    // variations to detect. The defaults cover the universal pattern.
+    if (!root) return '';
+    return [
+      root.querySelectorAll('.img-swap').length,
+      root.querySelectorAll('.product-card').length,
+      root.querySelectorAll('.attach-card').length,
+      root.querySelectorAll('button').length,
+      root.querySelectorAll('h1,h2,h3,h4').length
+    ].join('-');
+  }
+
+  function saveState() {
+    const stage = document.querySelector('.mockup-stage');
+    if (!stage) return;
+    try {
+      const payload = JSON.stringify({
+        fp: structuralFingerprint(stage),
+        html: stage.innerHTML
+      });
+      localStorage.setItem(STORAGE_KEY, payload);
+    } catch (e) {}
+  }
+
+  function restoreState() {
+    const stage = document.querySelector('.mockup-stage');
+    if (!stage) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      // Backwards-compat: old saves were raw HTML strings, not JSON. Treat those as stale.
+      if (raw[0] !== '{') {
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      const data = JSON.parse(raw);
+      const currentFp = structuralFingerprint(stage);
+      if (data.fp !== currentFp) {
+        console.warn('Editor: skipping restore — saved state predates a page update.');
+        return;
+      }
+      stage.innerHTML = data.html;
+    } catch (e) {}
+  }
+
+  function stripEditAttributes(root) {
+    if (!root) return;
+    // Only strip true edit artifacts. Do NOT remove the .img-swap class — that's part of
+    // the page's source markup, and removing it makes recovery impossible if the user enters
+    // edit mode without a full page reload (e.g. adds #edit to the URL on an already-open
+    // page, where the browser fires hashchange but doesn't refetch the HTML).
+    root.querySelectorAll('[contenteditable]').forEach(el => {
+      el.removeAttribute('contenteditable');
+      el.removeAttribute('spellcheck');
+    });
+  }
+
+  function applyEditable() {
+    // Selectors target .snhu-mock (matches the deck's mock containers). The applyImageSwap
+    // step that runs after this sets contenteditable="false" on .img-swap targets and their
+    // children, so image-swap clicks aren't hijacked by parent text-edit handling.
+    const sel = [
+      '.snhu-mock h1, .snhu-mock h2, .snhu-mock h3, .snhu-mock h4, .snhu-mock h5, .snhu-mock h6',
+      '.snhu-mock p',
+      '.snhu-mock span:not(.dot):not(.pin):not(.icon-cart)',
+      '.snhu-mock b', '.snhu-mock strong', '.snhu-mock small', '.snhu-mock em',
+      '.snhu-mock a',
+      '.snhu-mock label', '.snhu-mock td', '.snhu-mock li',
+      '.snhu-mock .porter-tag', '.snhu-mock .porter-ahead',
+      '.snhu-mock .chip',
+      '.snhu-mock .btn, .snhu-mock .btn-outline, .snhu-mock .btn-ghost, .snhu-mock .add-btn',
+      '.snhu-mock .badge', '.snhu-mock .pill',
+      '.snhu-mock .product-line', '.snhu-mock .product-name', '.snhu-mock .product-specs', '.snhu-mock .product-price',
+      '.snhu-mock .name', '.snhu-mock .price', '.snhu-mock .specs', '.snhu-mock .desc',
+      '.snhu-mock .num', '.snhu-mock .label',
+      '.snhu-mock .when', '.snhu-mock .ed', '.snhu-mock .countdown', '.snhu-mock .countdown-label',
+      '.snhu-mock .yr',
+      '.snhu-mock .qty', '.snhu-mock .save',
+      '.snhu-mock .from', '.snhu-mock .body-text', '.snhu-mock .signature',
+      '.snhu-mock .section-eyebrow', '.snhu-mock .lede',
+      '.snhu-mock .miles', '.snhu-mock .where', '.snhu-mock .date',
+      '.snhu-mock .amount', '.snhu-mock .savings',
+      '.mockup-caption'
+    ];
+    document.querySelectorAll(sel.join(',')).forEach(el => {
+      el.setAttribute('contenteditable', 'true');
+      el.setAttribute('spellcheck', 'false');
+    });
+  }
+
+  function applyImageSwap() {
+    // Step 1: mark every swap target as explicitly NOT contenteditable. Without this, Safari
+    // (and some other browsers) swallow clicks because the parent .snhu-mock subtree may
+    // have inherited contenteditable from a wider selector — children inherit edit behavior
+    // and place a text cursor instead of firing the click handler.
+    document.querySelectorAll('.snhu-mock img, .snhu-mock .img-swap').forEach(target => {
+      target.classList.add('img-swap');
+      target.setAttribute('contenteditable', 'false');
+    });
+
+    // Step 2: also mark children of .img-swap (like SVG paths, inline gradient labels)
+    // non-editable, otherwise clicks on those children focus them for text-edit instead
+    // of bubbling to the swap handler.
+    document.querySelectorAll('.snhu-mock .img-swap *').forEach(child => {
+      child.setAttribute('contenteditable', 'false');
+    });
+
+    // Step 3: ONE event-delegation handler at the stage level. Clicking anywhere inside
+    // an .img-swap subtree resolves to its nearest .img-swap ancestor and triggers the
+    // file picker. Robust across browsers, survives DOM changes from contenteditable typing.
+    //
+    // Binding-flag note: we used to use `stage.dataset.swapBound` as the dupe-bind guard,
+    // but `data-swap-bound="1"` got serialized into HTML by Save to file and persisted.
+    // On the next load, applyImageSwap saw the attribute and returned early — the click
+    // handler was never bound, and clicking images silently did nothing. Now we use a
+    // JS-local flag, AND we self-heal any legacy attribute baked into older saved files.
+    const stage = document.querySelector('.mockup-stage');
+    if (!stage) return;
+    if (stage.hasAttribute('data-swap-bound')) stage.removeAttribute('data-swap-bound');
+    if (swapHandlerBound) return;
+    swapHandlerBound = true;
+    stage.addEventListener('click', function (e) {
+      const target = e.target.closest('.img-swap');
+      if (!target) return;
+      if (!document.body.classList.contains('edit-mode')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      triggerImageUpload(target);
+    }, true);  // capture phase — intercepts before any contenteditable focus handling
+  }
+
+  /* ============================================================
+     IMAGE UPLOAD — writes uploaded images to the deck's images/ subfolder so the
+     saved HTML references images by path (small file) instead of inlining base64
+     (huge file, slow to load). Falls back to base64 if FS access isn't available.
+     ============================================================ */
+
+  // Cached handle for the deck's images/ subfolder. Per-tab; reuses dirHandle if
+  // Save-to-file was used first, otherwise prompts for the deck folder.
+  let imagesDirHandle = null;
+
+  async function getImagesDir() {
+    if (imagesDirHandle) return imagesDirHandle;
+    if (!window.showDirectoryPicker) return null;
+    if (!dirHandle) {
+      // No folder granted yet (Save to file hasn't run). Prompt now.
+      try {
+        showStatus('select your deck folder…', 'info');
+        dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      } catch (e) {
+        return null;  // user cancelled or denied
+      }
+    }
+    try {
+      imagesDirHandle = await dirHandle.getDirectoryHandle('images', { create: true });
+      return imagesDirHandle;
+    } catch (e) {
+      console.error('Could not access images/:', e);
+      return null;
+    }
+  }
+
+  function pageSlug() {
+    const name = (location.pathname.split('/').pop() || 'page').replace(/\.html?$/i, '');
+    return name.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
+  }
+
+  function slotIndex(target) {
+    // 1-based index of the swap target among all .img-swap elements on the page.
+    // Stable across re-uploads (assuming page structure unchanged), so re-uploading
+    // the same slot overwrites the file rather than spawning duplicates.
+    const all = Array.from(document.querySelectorAll('.mockup-stage .img-swap'));
+    const idx = all.indexOf(target);
+    return idx >= 0 ? idx + 1 : 0;
+  }
+
+  function fileExtension(file) {
+    const m = (file.name || '').match(/\.([a-z0-9]+)$/i);
+    return m ? m[1].toLowerCase() : 'png';
+  }
+
+  async function writeImageFile(file, target) {
+    // Write to images/<page-slug>-<slot-index>.<ext>. Returns the relative path on
+    // success, or null on failure (caller falls back to base64).
+    const dir = await getImagesDir();
+    if (!dir) return null;
+    const filename = pageSlug() + '-' + slotIndex(target) + '.' + fileExtension(file);
+    try {
+      const fileHandle = await dir.getFileHandle(filename, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(file);
+      await writable.close();
+      return 'images/' + filename;
+    } catch (e) {
+      console.error('Image write failed:', e);
+      return null;
+    }
+  }
+
+  function applyImageToTarget(target, src) {
+    if (target.tagName === 'IMG') {
+      target.src = src;
+    } else {
+      // Clear any placeholder content (SVG silhouettes, gradient overlays with text
+      // labels, etc.). Without this, those children render ON TOP of the new
+      // background image and the user sees both.
+      target.innerHTML = '';
+      // Some placeholders set the gradient via inline `style="background: ..."`
+      // shorthand. Reset the shorthand before applying the image so background-color
+      // and other sub-properties don't fight the new image.
+      target.style.background = '';
+      target.style.backgroundImage = 'url("' + src + '")';
+      target.style.backgroundSize = 'cover';
+      target.style.backgroundPosition = 'center';
+    }
+  }
+
+  function triggerImageUpload(target) {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = async function () {
+      const f = input.files[0]; if (!f) return;
+      showStatus('saving image…', 'info');
+      // Preferred path: write the file to images/ and reference it by relative path.
+      // Keeps the saved HTML small (a few KB instead of base64-bloated MB).
+      const path = await writeImageFile(f, target);
+      if (path) {
+        applyImageToTarget(target, path);
+        saveState();
+        showStatus('saved → ' + path, 'success');
+        return;
+      }
+      // Fallback: inline base64 data URL. Heavier files but works everywhere — file://,
+      // no folder permission, Safari/Firefox without FS Access API support, etc.
+      const r = new FileReader();
+      r.onload = function (ev) {
+        applyImageToTarget(target, ev.target.result);
+        saveState();
+        showStatus('embedded inline (no folder access)', 'warn');
+      };
+      r.readAsDataURL(f);
+    };
+    input.click();
+  }
+
+  /* ============================================================
+     SAVE TO FILE — writes the current DOM back to the real .html file
+     ============================================================ */
+
+  function buildSaveableHtml() {
+    // Clone the document and strip everything that's runtime-only (toolbar, edit attrs).
+    // Crucially: KEEP the <link rel="stylesheet"> and <script src="editor.js"> intact so
+    // the saved file remains part of the multi-file deck — DON'T inline anything.
+    const clone = document.documentElement.cloneNode(true);
+
+    const bar = clone.querySelector('.editor-bar');
+    if (bar) bar.remove();
+
+    clone.querySelectorAll('[contenteditable]').forEach(el => {
+      el.removeAttribute('contenteditable');
+      el.removeAttribute('spellcheck');
+    });
+
+    const cloneBody = clone.querySelector('body');
+    if (cloneBody) cloneBody.classList.remove('edit-mode');
+
+    // Strip runtime-only attributes from the stage so they don't persist into saved HTML.
+    // (Specifically: data-swap-bound was historically used as a dupe-bind guard and got
+    // baked into saved files, breaking the image-click handler on subsequent loads.)
+    const stageClone = clone.querySelector('.mockup-stage');
+    if (stageClone) stageClone.removeAttribute('data-swap-bound');
+
+    // Note: we KEEP the .img-swap classes (they're structural markers in the source),
+    // KEEP <script src="editor.js"></script> (the saved file still loads the editor),
+    // KEEP <link rel="stylesheet" href="styles.css"> (don't inline — file is part of a deck).
+
+    return '<!DOCTYPE html>\n' + clone.outerHTML;
+  }
+
+  async function saveToFile() {
+    const filename = location.pathname.split('/').pop() || 'index.html';
+    const html = buildSaveableHtml();
+
+    if (window.showDirectoryPicker) {
+      try {
+        if (!dirHandle) {
+          showStatus('select your deck folder…', 'info');
+          dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        }
+        const fileHandle = await dirHandle.getFileHandle(filename);
+        const writable = await fileHandle.createWritable();
+        await writable.write(html);
+        await writable.close();
+        showStatus('saved → ' + filename, 'success');
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          showStatus('save cancelled', 'warn');
+          return;
+        }
+        if (e.name === 'NotFoundError') {
+          // User picked a folder that doesn't contain this file — clear handle and re-prompt
+          dirHandle = null;
+          showStatus(filename + ' not in that folder — click Save again', 'warn');
+          return;
+        }
+        if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
+          dirHandle = null;
+          showStatus('permission denied — click Save again to retry', 'warn');
+          return;
+        }
+        console.error('Save to file failed:', e);
+        showStatus('save failed — downloading instead', 'warn');
+        // fall through to download
+      }
+    } else {
+      showStatus('Chrome/Edge needed for direct save — downloading instead', 'warn');
+    }
+
+    // Fallback: trigger a download. User drops the file into the repo manually.
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function showStatus(msg, kind) {
+    const status = document.querySelector('.editor-bar .status');
+    if (!status) return;
+    status.textContent = msg;
+    status.dataset.kind = kind || 'info';
+    clearTimeout(showStatus._t);
+    showStatus._t = setTimeout(() => {
+      status.textContent = '';
+      delete status.dataset.kind;
+    }, 4500);
+  }
+
+  /* ============================================================
+     TOOLBAR
+     ============================================================ */
+
+  function injectToolbar() {
+    if (document.querySelector('.editor-bar')) return;
+    const bar = document.createElement('div');
+    bar.className = 'editor-bar';
+    bar.innerHTML =
+      '<a class="back" href="index.html">← All mockups</a>' +
+      '<span class="title">' + document.title.replace(/^Quinn — /, '') + '</span>' +
+      '<span class="status" aria-live="polite"></span>' +
+      '<span class="spacer"></span>' +
+      '<button id="toggle-edit" type="button">Edit: ON</button>' +
+      '<button id="reset-edits" type="button">Reset</button>' +
+      '<button class="primary" id="save-to-file" type="button">Save to file</button>' +
+      '<span class="hint">Click any text or image to edit · ⌘E to toggle · Save writes to disk</span>';
+    document.body.insertBefore(bar, document.body.firstChild);
+    document.getElementById('toggle-edit').addEventListener('click', toggleEditMode);
+    document.getElementById('reset-edits').addEventListener('click', resetEdits);
+    document.getElementById('save-to-file').addEventListener('click', saveToFile);
+  }
+
+  function enableEditMode() {
+    if (edited) return;
+    edited = true;
+    restoreState();
+    document.body.classList.add('edit-mode');
+    injectToolbar();
+    applyEditable();
+    applyImageSwap();
+  }
+
+  function toggleEditMode() {
+    if (!edited) {
+      enableEditMode();
+      return;
+    }
+    document.body.classList.toggle('edit-mode');
+    const btn = document.getElementById('toggle-edit');
+    if (btn) btn.textContent = document.body.classList.contains('edit-mode')
+      ? 'Edit: ON' : 'Edit: OFF';
+  }
+
+  function resetEdits() {
+    if (!confirm('Reset this page to the version on disk? Unsaved edits in this browser will be lost.')) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    location.reload();
+  }
+
+  function init() {
+    if (initialized) return;
+    initialized = true;
+    // Only restore saved edits when entering edit mode. Auto-restoring on every page load
+    // is a footgun: stale cache silently replaces new content for view-only visitors.
+    if (isEditUrl()) {
+      restoreState();
+      enableEditMode();
+    } else {
+      stripEditAttributes(document.querySelector('.mockup-stage'));
+    }
+    document.addEventListener('input', function (e) {
+      if (e.target.closest && e.target.closest('.mockup-stage')) saveState();
+    });
+  }
+
+  // Entry point 1: initial page load with #edit
+  document.addEventListener('DOMContentLoaded', init);
+
+  // Entry point 2: hash CHANGED after load
+  window.addEventListener('hashchange', function () {
+    if (isEditUrl()) enableEditMode();
+  });
+
+  // Entry point 3: Cmd/Ctrl + E
+  document.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'e' || e.key === 'E')) {
+      const t = e.target;
+      const isField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (isField && edited) return;
+      e.preventDefault();
+      toggleEditMode();
+    }
+  });
+
+  // Entry point 4: type "edit" anywhere on the page
+  let typed = '';
+  document.addEventListener('keydown', function (e) {
+    const t = e.target;
+    const isField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    if (isField) return;
+    if (e.key && e.key.length === 1) {
+      typed = (typed + e.key.toLowerCase()).slice(-4);
+      if (typed === 'edit') { typed = ''; if (!edited) enableEditMode(); }
+    }
+  });
+
+  console.log('%cQuinn editor', 'color:#1a1a1a;font-weight:700;background:#fff;padding:2px 6px',
+    'enable with #edit in URL, ⌘E, or type "edit" · Save to file writes the .html on disk');
+})();

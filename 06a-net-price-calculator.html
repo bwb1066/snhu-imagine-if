@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quinn — Net price calculator</title>
+  <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="mockup-stage">
+    <p class="mockup-caption"><strong>6A</strong> — The net-price calculator, surfaced contextually. Not the generic SNHU calculator — Maya's specific math, factoring her transfer credits, Pell grant, employer reimbursement. Cost honesty as the highest-leverage trust play in the entire funnel.</p>
+    <div class="snhu-mock">
+      <div class="snhu-util">
+        <a>Request Info</a><a>Visit SNHU</a><a>my.SNHU</a>
+      </div>
+      <div class="snhu-nav">
+        <span class="snhu-logo">Southern New Hampshire <span class="accent">University</span></span>
+        <div class="snhu-nav-items">
+          <a>Academic Programs</a><a>Admission</a><a class="active">Tuition &amp; Aid</a><a>Campus</a><a>About SNHU</a>
+        </div>
+        <div class="snhu-actions"><a class="primary">Apply Now</a></div>
+      </div>
+
+      <div class="snhu-hero" style="text-align:left;padding:40px 32px;">
+        <div class="ask-quinn on-dark">QUINN · YOUR ACTUAL COST</div>
+        <h1 style="text-align:left;">$13,005 out of pocket, over 22 months</h1>
+        <p class="sub" style="margin:0;max-width:none;">Your BS in Healthcare Administration after transfer credits, Pell grant, and employer reimbursement. Math below — not marketing math, the actual math.</p>
+      </div>
+
+      <div class="section">
+        <div class="attach-math">
+          <div class="stat">$591<span class="small">/month average</span></div>
+          <p>That's what you'll actually pay over 22 months for the BS. Roughly the cost of one streaming bundle plus two takeout dinners. And the bachelor's adds about $14,600 to your earning power within 18 months of graduating — see the trajectory in 2B.</p>
+        </div>
+
+        <h2>Step by step — your math</h2>
+
+        <table class="aid-table" style="margin-top:14px;">
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>What it costs / saves</th>
+              <th class="amt">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <strong>1. Total credits to graduate</strong>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">BS Healthcare Administration = 120 credits required</div>
+              </td>
+              <td>120 credits required</td>
+              <td class="amt">120</td>
+            </tr>
+            <tr class="subtotal">
+              <td>
+                <strong>2. Credits already transferred</strong>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">From your associate degree at Manchester Community College</div>
+              </td>
+              <td>Free — already earned</td>
+              <td class="amt neg">−45</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>3. Credits to earn at SNHU</strong>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">75 credits × $342/cr undergraduate online rate</div>
+              </td>
+              <td>Base tuition before any aid</td>
+              <td class="amt">$25,650</td>
+            </tr>
+            <tr class="subtotal">
+              <td>
+                <strong>4. Federal Pell Grant</strong>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Based on your FAFSA · $7,395/year × ~1.0 years equivalent enrollment</div>
+              </td>
+              <td>Grant — doesn't need to be repaid</td>
+              <td class="amt neg">−$7,395</td>
+            </tr>
+            <tr class="subtotal">
+              <td>
+                <strong>5. Employer tuition reimbursement</strong>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Your hospital reimburses $5,250/year tax-free (IRS §127 maximum)</div>
+              </td>
+              <td>Reimbursed by your employer</td>
+              <td class="amt neg">−$5,250</td>
+            </tr>
+            <tr class="total">
+              <td>
+                <strong>Net cost to you over 22 months</strong>
+                <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px;">~$591/month if you spread it · or pay term-by-term as you go</div>
+              </td>
+              <td>Out-of-pocket</td>
+              <td class="amt">$13,005</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="quinn-card" style="margin-top:20px;">
+          <div class="quinn-tag">Quinn — three honest things about this number</div>
+          <p style="margin-bottom:8px;"><strong>It assumes your Pell stays awarded.</strong> If your hospital gives you a raise during the program, Pell could shrink the next academic year. I'll re-run the math automatically when your FAFSA renews.</p>
+          <p style="margin-bottom:8px;"><strong>It assumes your hospital keeps its $5,250 benefit.</strong> Most do. If yours cuts it, you've still got the option to take a Direct Subsidized Loan (no interest while enrolled) for the gap — that's break-even given the salary lift after graduation.</p>
+          <p style="margin-bottom:0;"><strong>It doesn't include books or fees.</strong> SNHU includes most textbooks in tuition — total fees over 22 months land around $250-$400 depending on capstone materials.</p>
+        </div>
+
+        <div style="display:flex;gap:12px;margin-top:24px;">
+          <a class="btn">Apply now — June 29 start</a>
+          <a class="btn-outline btn">See aid package detail</a>
+          <a class="btn-ghost btn">Save this estimate</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="editor.js"></script>
+</body>
+</html>
