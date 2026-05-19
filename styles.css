@@ -837,15 +837,27 @@ h3 { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin
 .index-hero {
   background: linear-gradient(135deg, var(--snhu-ink) 0%, var(--snhu-ink-deep) 100%);
   color: #fff;
-  padding: 80px 48px 56px;
+  padding: 0 0 56px;
   max-width: 1200px;
   margin: 32px auto 0;
+  overflow: hidden;
+}
+.index-hero-bar {
+  background: #fff;
+  padding: 16px 48px;
+  margin-bottom: 48px;
 }
 .index-hero-logo {
   display: block;
   height: 36px;
   width: auto;
-  margin-bottom: 28px;
+}
+.index-tagline,
+.index-hero h1,
+.index-hero p,
+.index-hero code {
+  padding-left: 48px;
+  padding-right: 48px;
 }
 .index-tagline {
   font-size: 11px;
